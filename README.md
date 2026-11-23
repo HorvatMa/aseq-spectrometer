@@ -11,10 +11,15 @@ Longer exposures raise an error before anything goes to the device. To raise the
 pass `max_exposure_ms=...` or `--max-exposure ...` on purpose.
 
 ## Install
+With [uv](https://docs.astral.sh/uv/) (Python 3.12, local `.venv`, pinned in `uv.lock`):
 ```
-pip install -r requirements.txt        # hidapi, numpy, PyQt5, pyqtgraph
+uv sync
+uv run gui.py
+uv run aseq.py measure -e 10 -n 5 --dark -o spectrum.txt
 ```
-or without installing anything: `uv run --no-project --with hidapi --with numpy --with PyQt5 --with pyqtgraph python gui.py`
+`uv run` creates/updates the environment automatically, so `uv sync` is optional.
+
+Without uv: `pip install -r requirements.txt` (hidapi, numpy, PyQt5, pyqtgraph).
 
 ## GUI
 ```

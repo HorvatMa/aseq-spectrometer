@@ -1,0 +1,18 @@
+[project]
+name = "aseq-spectrometer"
+version = "0.1.0"
+description = "Python driver, TCP command server and PyQt GUI for ASEQ LR2 spectrometers"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "hidapi",
+    "numpy",
+    "PyQt5",
+    "pyqtgraph",
+]
+
+[tool.uv]
+package = false
+# the newest PyQt5-Qt5 wheels are Linux/macOS only: make uv pick a version that
+# also exists for the Windows lab PC
+required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
