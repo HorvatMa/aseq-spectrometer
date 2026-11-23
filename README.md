@@ -21,6 +21,11 @@ uv run aseq.py measure -e 10 -n 5 --dark -o spectrum.txt
 
 Without uv: `pip install -r requirements.txt` (hidapi, numpy, PyQt5, pyqtgraph).
 
+**Linux:** install the udev rule once (then replug), otherwise the device cannot be opened:
+```
+sudo cp udev/70-aseq-spectrometer.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+```
+
 ## GUI
 ```
 python gui.py                 # connects, starts the TCP server on 127.0.0.1:5050
@@ -88,6 +93,13 @@ ask("EXP 20"); counts = list(map(float, ask("MEAS 3 DARK").split()))
 ```
 
 ## Notes
+- **Settling after new acquisition parameters.** Every acquisition-parameter command (0x03)
+  restarts the CCD integration, and the next frames are too low (first frame 0.3–0.6 of the
+  steady value, recovering over ~2 exposures; tested 23. 11. 2026). The driver therefore
+  sends 0x03 only when the parameters change, and then waits `settle_frames` (3) exposure
+  times, or `settle_frames_new_exposure` (6) after an exposure change, before the next
+  trigger. Even then the first frame after an exposure change can be ~3 % low: drop it
+  if that matters. Unchanged parameters (also after idle) give flat frames.
 - The driver uses continuous scan mode. In the "idle" modes, the first frame after a pause
   carries leftover charge (it was saturated near 17k counts in tests).
 - The pixel→wavelength mapping (frame index 32 = first calibration point) comes from

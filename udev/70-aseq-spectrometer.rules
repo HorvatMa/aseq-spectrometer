@@ -1,4 +1,6 @@
-# ASEQ LR2 spectrometer (USB e220:0100): give the logged-in user access
-# to the USB device (libusb backend) and its hidraw node (hidraw backend).
-SUBSYSTEM=="usb", ATTRS{idVendor}=="e220", ATTRS{idProduct}=="0100", TAG+="uaccess"
-KERNEL=="hidraw*", ATTRS{idVendor}=="e220", ATTRS{idProduct}=="0100", TAG+="uaccess"
+# ASEQ LR2 spectrometer (USB e220:0100): access for normal users, for both the
+# libusb backend (usb device node) and the hidraw backend.
+# MODE="0666" keeps access when the desktop session is locked/inactive
+# (uaccess alone hands the device to the active session only, e.g. the lock screen).
+SUBSYSTEM=="usb", ATTRS{idVendor}=="e220", ATTRS{idProduct}=="0100", MODE="0666", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="e220", ATTRS{idProduct}=="0100", MODE="0666", TAG+="uaccess"

@@ -99,6 +99,13 @@ class ASEQSpectrometer:
             ) from e
         self.serial = self._h.get_serial_number_string()
         self._exposure_ticks: int | None = None
+        #: last acquisition parameters sent (0x03) and when the CCD has settled
+        self._acq_params: tuple | None = None
+        self._settled_at = 0.0
+        #: exposure times to wait after new acquisition parameters with the same
+        #: exposure, and after a new exposure (see set_acquisition_parameters)
+        self.settle_frames = 3
+        self.settle_frames_new_exposure = 6
         self._n_pixels = self._set_frame_format(0, 3647, 0)
         self._wavelengths: np.ndarray | None = None
         self._cal_header: str | None = None
@@ -143,9 +150,32 @@ class ASEQSpectrometer:
     @_locked
     def set_acquisition_parameters(self, n_scans: int, n_blank: int, scan_mode: int,
                                    exposure_ticks: int) -> None:
+        """Send acquisition parameters (0x03), only if they changed.
+
+        Every 0x03 restarts the CCD integration: the frames that follow are too low
+        for about two exposure times (tested on Linux 23. 11. 2026 at 1000 ms, first
+        frame of each call 0.30-0.64 of the steady value, 0.83-0.97 for the next two).
+        So the command is skipped when nothing changed, and after a change the next
+        trigger waits ``settle_frames`` exposure times (see ``_wait_settled``).
+        A new exposure time needs longer: after 100 -> 1000 ms with a 3-exposure wait
+        the first frame was still 0.91 (ramping to 0.98); with 6 it was 0.98-0.99, within
+        the noise. Hence ``settle_frames_new_exposure``.
+        """
         self._check_ticks(exposure_ticks)
-        self._cmd(0x03, struct.pack("<HHBI", n_scans, n_blank, scan_mode, exposure_ticks))
+        params = (n_scans, n_blank, scan_mode, exposure_ticks)
+        if params == self._acq_params:
+            return
+        new_exposure = self._acq_params is None or self._acq_params[3] != exposure_ticks
+        self._cmd(0x03, struct.pack("<HHBI", *params))
+        self._acq_params = params
         self._exposure_ticks = exposure_ticks
+        k = self.settle_frames_new_exposure if new_exposure else self.settle_frames
+        self._settled_at = time.monotonic() + k * exposure_ticks * 1e-5 + 0.005
+
+    def _wait_settled(self) -> None:
+        dt = self._settled_at - time.monotonic()
+        if dt > 0:
+            time.sleep(dt)
 
     @_locked
     def get_acquisition_parameters(self) -> tuple[int, int, int, int]:
@@ -264,8 +294,9 @@ class ASEQSpectrometer:
         self._check_ticks(ticks)
         # continuous mode (0): the CCD is read all the time and frames are stored on
         # trigger.  The idle modes (1, 2) give an over-exposed first frame.
-        self.set_acquisition_parameters(1, 0, 0, ticks)
-        time.sleep(2 * ticks * 1e-5 + 0.005)  # let a full frame at the new exposure pass
+        n = self._acq_params[0] if self._acq_params else 1   # keep n: no second restart
+        self.set_acquisition_parameters(n, 0, 0, ticks)
+        self._wait_settled()  # let the CCD settle at the new exposure
         return ticks / 100
 
     @property
@@ -281,7 +312,8 @@ class ASEQSpectrometer:
             raise ValueError("n must be 1..137 (device memory)")
         ticks = self._exposure_ticks or self.get_acquisition_parameters()[3]
         self._check_ticks(ticks)
-        self._cmd(0x03, struct.pack("<HHBI", n, 0, 0, ticks))
+        self.set_acquisition_parameters(n, 0, 0, ticks)   # no-op if unchanged
+        self._wait_settled()
         self.clear_memory()
         self.trigger()
         exp_s = ticks * 1e-5
